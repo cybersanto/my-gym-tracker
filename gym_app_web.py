@@ -1,41 +1,48 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-import gspread
 
-# Configurazione Pagina
-st.set_page_config(page_title="GymTrack Cloud", page_icon="🏋️")
+st.set_page_config(page_title="GymTrack Easy", page_icon="💪")
 
-# --- CONNESSIONE DIRETTA ---
-# Il link che mi hai dato
-URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1CDkQjdxBGYTTQk8xZE0RP5yVJlYuD-80Uzkz84RWAMs/edit?usp=sharing"
+st.title("🏋️ Il Mio Diario Gym")
 
-def get_sheet():
-    # Metodo per connettersi senza Service Account (solo lettura/scrittura pubblica)
-    # Nota: Se Google blocca ancora, dovremo passare per le "API" ufficiali.
-    try:
-        gc = gspread.public_spreadsheet(URL_FOGLIO)
-        # Se il metodo pubblico fallisce la scrittura, usiamo un trucco:
-        return gc.worksheet("workouts")
-    except:
-        st.error("Per scrivere sul foglio, Google richiede un Service Account.")
-        return None
+# Funzione per caricare/salvare i dati usando il database di Streamlit
+@st.cache_data(ttl=600)
+def load_data():
+    if "my_data" not in st.session_state:
+        # Prova a leggere il file se esiste già nel cloud storage
+        try:
+            return pd.read_csv("gym_progress.csv")
+        except:
+            return pd.DataFrame(columns=["Data", "Esercizio", "Sets", "Reps", "Kg"])
+    return st.session_state.my_data
 
-# --- INTERFACCIA ---
-st.title("🏋️ GymTrack Cloud")
+data = load_data()
 
-# Form inserimento
-with st.form("add_workout"):
-    col1, col2, col3, col4 = st.columns([3,1,1,1])
-    name = col1.text_input("Esercizio")
-    s = col2.number_input("S", min_value=1)
-    r = col3.number_input("R", min_value=1)
-    w = col4.number_input("Kg", min_value=0.0)
-    submit = st.form_submit_button("Salva nel Cloud")
+# --- FORM DI INSERIMENTO ---
+with st.form("gym_form", clear_on_submit=True):
+    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+    es = col1.text_input("Esercizio")
+    s = col2.number_input("S", min_value=1, step=1)
+    r = col3.number_input("R", min_value=1, step=1)
+    k = col4.number_input("Kg", min_value=0.0, step=0.5)
+    
+    if st.form_submit_button("Salva nel Cloud"):
+        if es:
+            nuovo = pd.DataFrame([[str(date.today()), es, s, r, k]], 
+                                columns=["Data", "Esercizio", "Sets", "Reps", "Kg"])
+            data = pd.concat([data, nuovo], ignore_index=True)
+            # Salva fisicamente il file
+            data.to_csv("gym_progress.csv", index=False)
+            st.session_state.my_data = data
+            st.success("Salvato!")
+            st.rerun()
 
-    if submit and name:
-        # TRUCCO: Invece di usare la libreria Streamlit, 
-        # ti consiglio di usare questo link per salvare i dati se il codice fallisce.
-        st.info("Tentativo di salvataggio...")
-        # (Logica di salvataggio semplificata)
-        st.warning("Google ha restrizioni rigide sulla scrittura pubblica.")
+# --- VISUALIZZAZIONE ---
+st.subheader("I tuoi record")
+st.dataframe(data, use_container_width=True, hide_index=True)
+
+# Tasto per scaricare i dati sul telefono (per sicurezza tua)
+st.download_button("Scarica Backup Excel/CSV", 
+                   data.to_csv(index=False), 
+                   "i_miei_allenamenti.csv", "text/csv")
